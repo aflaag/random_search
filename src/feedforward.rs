@@ -6,7 +6,7 @@ use std::{error, fmt, ops};
 use na::DMatrix;
 use rand::{Rng, distributions::Standard};
 
-const STEP_SIZE: f32 = 1e-4;
+pub const STEP_SIZE: f32 = 1e-5;
 
 pub type FeedForward1x1<const S: usize> = FeedForwardNxN<1, S>;
 
@@ -25,17 +25,11 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
         DMatrix::from_iterator(m, n,
             (0..m * n)
                 .zip(rng.sample_iter(Standard))
-                // .map(|(_, random): (usize, f32)| random * STEP_SIZE)
                 .map(|(_, random): (usize, f32)| random * step_size)
         )
     }
 
-    pub fn new<R: Rng + ?Sized>(
-        rng: &mut R,
-        layers_sizes: Vec<usize>,
-        activation_function: ActivationFunction,
-        step_size: f32
-    ) -> Result<Self, NetworkError> {
+    pub fn new<R: Rng + ?Sized>(rng: &mut R, layers_sizes: Vec<usize>, activation_function: ActivationFunction, step_size: f32) -> Result<Self, NetworkError> {
         let layers_sizes_len = layers_sizes.len();
 
         if layers_sizes_len == 0 {
@@ -100,12 +94,12 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
                     .map(|(o, y)| (o - y) * (o - y))
                     .fold(0.0f32, |acc, diff| acc + diff)
             })
-            .fold(0.0f32, |total, cost| total + cost) / S as f32
+            .fold(0.0f32, |total, cost| total + cost) / (S as f32)
     }
 
-    pub fn random_search<R: Rng + ?Sized>(&mut self, rng: &mut R, epochs: usize) {
+    pub fn random_search<R: Rng + ?Sized>(&mut self, rng: &mut R, epochs: usize, samples: usize) {
         for _ in 0..epochs {
-            let best_ffnn = (0..512).map(|_| {
+            let best_ffnn = (0..samples).map(|_| {
                 let random_ffnn = FeedForwardNxN::<N, S>::new(
                     rng,
                     self.layers_sizes.clone(),
@@ -136,7 +130,7 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
         // will avoid performing the loop on the
         // last layer, which is the output layer
         for i in 0..self.layers_number {
-            x_vec = self.weights[i].clone() * x_vec + self.biases[i].clone();
+            x_vec = &self.weights[i] * x_vec + &self.biases[i];
 
             x_vec.iter_mut().for_each(|x| *x = (self.activation_function.function())(*x));
         }
@@ -146,16 +140,13 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
         // because the length of those vectors are
         // layers_number + 1, since layer_number
         // is just the number of hidden layers
-        x_vec = self.weights[self.layers_number].clone() * x_vec + self.biases[self.layers_number].clone();
+        x_vec = &self.weights[self.layers_number] * x_vec + &self.biases[self.layers_number];
 
         x_vec
     }
 
     // TODO: debug
     pub fn print_stuff(&self) {
-        // println!("{:#?}", self.weights);
-        // println!("{:#?}", self.biases);
-        // println!("{:#?}", self.size);
     }
 }
 

@@ -13,6 +13,7 @@
 - [x] change rng in dataset
 - [x] change new for ffnn with normal distribution
 - [x] implement the random search algorithm
+- [ ] make evaluate to take same input and output
 - [ ] understand what the fuck is going on
 - [ ] implement seeds for the best ffnn
 - [ ] implement nn trait
