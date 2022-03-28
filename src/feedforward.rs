@@ -4,9 +4,10 @@ use crate::{activation_function::ActivationFunction, dataset::DatasetNxN};
 
 use std::{error, fmt, ops};
 use na::DMatrix;
-use rand::{Rng, distributions::Standard};
+use rand::Rng;
+use rand_distr::StandardNormal;
 
-pub const STEP_SIZE: f32 = 1e-5;
+pub const STEP_SIZE: f32 = 0.0001;
 
 pub type FeedForward1x1<const S: usize> = FeedForwardNxN<1, S>;
 
@@ -24,7 +25,7 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
     fn generate_matrix_from_iterator<R: Rng + ?Sized>(m: usize, n: usize, step_size: f32, rng: &mut R) -> DMatrix<f32> {
         DMatrix::from_iterator(m, n,
             (0..m * n)
-                .zip(rng.sample_iter(Standard))
+                .zip(rng.sample_iter(StandardNormal))
                 .map(|(_, random): (usize, f32)| random * step_size)
         )
     }
@@ -92,30 +93,50 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
                     .iter()
                     .zip(self.evaluate(*input).iter())
                     .map(|(o, y)| (o - y) * (o - y))
-                    .fold(0.0f32, |acc, diff| acc + diff)
+                    .sum::<f32>()
             })
-            .fold(0.0f32, |total, cost| total + cost) / (S as f32)
+            .sum::<f32>() / (S as f32)
+
+        // let mut t = 0.0;
+        // // let mut rng = thread_rng();
+        // let mut rng = StdRng::from_entropy();
+
+        // for _ in 0..128 {
+        //     let x: f32 = rng.sample::<f32, _>(StandardNormal);
+        //     // let x: f32 = 10.0 / (1.0 + rng.sample::<f32, _>(StandardNormal)) - 5.0;
+        //     // println!("{}", x);
+
+        //     t += self.evaluate([x as f32; N])
+        //         .iter()
+        //         .map(|output| {
+        //             let expected = (x as f32).sin();
+
+        //             (output - expected) * (output - expected)
+        //         })
+        //         .sum::<f32>();
+        // }
+
+        // t / (S as f32)
     }
 
     pub fn random_search<R: Rng + ?Sized>(&mut self, rng: &mut R, epochs: usize, samples: usize) {
-        for _ in 0..epochs {
-            let best_ffnn = (0..samples).map(|_| {
-                let random_ffnn = FeedForwardNxN::<N, S>::new(
-                    rng,
-                    self.layers_sizes.clone(),
-                    self.activation_function,
-                    STEP_SIZE,
+        for epoch in 0..epochs {
+            *self += (0..samples)
+                .map(|_| {
+                    FeedForwardNxN::<N, S>::new(
+                        rng,
+                        self.layers_sizes.clone(),
+                        self.activation_function,
+                        STEP_SIZE,
+                    ).unwrap()
+                }).min_by(|x, y|
+                    x
+                        .evaluate_average_cost()
+                        .partial_cmp(&y.evaluate_average_cost())
+                        .unwrap()
                 ).unwrap();
 
-                random_ffnn
-            }).min_by(|x, y|
-                x
-                    .evaluate_average_cost()
-                    .partial_cmp(&y.evaluate_average_cost())
-                    .unwrap()
-            ).unwrap();
-
-            *self += best_ffnn;
+            println!("({}, {})", epoch, self.evaluate_average_cost());
         }
     }
 
@@ -140,9 +161,7 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
         // because the length of those vectors are
         // layers_number + 1, since layer_number
         // is just the number of hidden layers
-        x_vec = &self.weights[self.layers_number] * x_vec + &self.biases[self.layers_number];
-
-        x_vec
+        &self.weights[self.layers_number] * x_vec + &self.biases[self.layers_number]
     }
 
     // TODO: debug
@@ -153,18 +172,14 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
 impl<const N: usize, const S: usize> ops::AddAssign for FeedForwardNxN<N, S> {
     fn add_assign(&mut self, rhs: Self) {
         if self.layers_sizes != rhs.layers_sizes {
-            panic!("The two networks have different sizes");
+            panic!("The two networks have different sizes.");
         } else {
             self.weights.iter_mut().zip(rhs.weights.iter()).for_each(|(self_matrix, rhs_matrix)| {
-                self_matrix.iter_mut().zip(rhs_matrix.iter()).for_each(|(v, r)| {
-                    *v += r;
-                });
+                self_matrix.iter_mut().zip(rhs_matrix.iter()).for_each(|(v, r)| *v += r);
             });
 
             self.biases.iter_mut().zip(rhs.biases.iter()).for_each(|(self_bias, rhs_bias)| {
-                self_bias.iter_mut().zip(rhs_bias.iter()).for_each(|(v, r)| {
-                    *v += r;
-                });
+                self_bias.iter_mut().zip(rhs_bias.iter()).for_each(|(v, r)| *v += r);
             });
         }
     }

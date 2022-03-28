@@ -5,7 +5,7 @@ fn main() {
     let mut rng = thread_rng();
     let mut stdrng = StdRng::from_entropy();
 
-    let mut ffnn = FeedForward1x1::new(
+    let mut ffnn = FeedForward1x1::<128>::new(
         &mut stdrng,
         vec![16, 16, 16],
         ActivationFunction::ReLU,
