@@ -16,20 +16,32 @@ pub struct FeedForwardNxN<const N: usize, const S: usize> {
     layers_number: usize,
     weights: Vec<DMatrix<f32>>,
     biases: Vec<DMatrix<f32>>,
-    activation_function: fn(f32) -> f32,
+    activation_function: ActivationFunction,
     dataset: DatasetNxN<f32, N, S>,
     // size: usize,
 }
 
 impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
-    pub fn new(layers_sizes: Vec<usize>, activation_function: ActivationFunction, dataset: DatasetNxN<f32, N, S>) -> Result<Self, NetworkError> {
+    fn generate_matrix_from_iterator<R: Rng + Clone>(m: usize, n: usize, rng: R) -> DMatrix<f32> {
+        DMatrix::from_iterator(m, n,
+            (0..m * n)
+                .zip(rng.sample_iter(Standard))
+                .map(|(_, random): (usize, f32)| random * STEP_SIZE)
+        )
+    }
+
+    pub fn new<R: Rng + Clone>(
+        rng: &mut R,
+        layers_sizes:
+        Vec<usize>,
+        activation_function:
+        ActivationFunction,
+    ) -> Result<Self, NetworkError> {
         let layers_sizes_len = layers_sizes.len();
 
         if layers_sizes_len == 0 {
-            return Err(NetworkError::EmptyNayers);
+            return Err(NetworkError::EmptyLayers);
         }
-
-        let mut rng = thread_rng();
 
         let first_hidden_size = layers_sizes[0];
         let last_hidden_size = *layers_sizes.iter().last().unwrap(); // this unwrap is always safe
@@ -37,7 +49,7 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
         // add the weights between the input
         // layer to the first hidden layer
         let mut weights = vec![
-            DMatrix::<f32>::from_iterator(first_hidden_size, N, (0..first_hidden_size * N).map(|_| rng.gen()))
+            Self::generate_matrix_from_iterator(first_hidden_size, N, rng.clone())
         ];
 
         // add the weights bewteen the
@@ -46,32 +58,30 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
             let m = layers_sizes[i + 1];
             let n = layers_sizes[i];
 
-            weights.push(DMatrix::from_iterator(m, n, (0..m * n).map(|_| rng.gen())));
+            weights.push(Self::generate_matrix_from_iterator(m, n, rng.clone()));
         });
 
         // add the weights between the
         // last hidden layer and the output layer
-        weights.push(
-            DMatrix::<f32>::from_iterator(N, last_hidden_size, (0..last_hidden_size * N).map(|_| rng.gen()))
-        );
+        weights.push(Self::generate_matrix_from_iterator(N, last_hidden_size, rng.clone()));
 
         // create the biases for each
         // hidden layer
         let mut biases: Vec<DMatrix<f32>> = layers_sizes.iter().map(|n|
-            DMatrix::from_iterator(*n, 1, (0..*n).map(|_| rng.gen()))
+            Self::generate_matrix_from_iterator(*n, 1, rng.clone())
         ).collect();
 
         // create the biases for the
         // output layer
-        biases.push(DMatrix::from_iterator(N, 1, (0..N).map(|_| rng.gen())));
+        biases.push(Self::generate_matrix_from_iterator(N, 1, rng.clone()));
 
         Ok(Self {
             layers_sizes,
             layers_number: layers_sizes_len,
             weights,
             biases,
-            activation_function: activation_function.value(),
-            dataset,
+            activation_function: activation_function,
+            dataset: DatasetNxN::default(),
             // size:
             //     layers_sizes.iter().sum::<usize>() + N + // biases hidden layers + bias output layer
             //     N * first_hidden_size + // weights between the input layer and the first hidden layer
@@ -80,12 +90,9 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
         })
     }
 
-    // TODO: here
-    // pub fn new_random<R>(rng: &mut R) -> Self {
-    //     Self {
-
-    //     }
-    // }
+    pub fn load_dataset(&mut self, dataset: DatasetNxN<f32, N, S>) {
+        self.dataset = dataset;
+    }
 
     fn evaluate_average_cost(&self) -> f32 {
         self.dataset
@@ -105,7 +112,7 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
                 for i in 0..self.layers_number {
                     x_vec = self.weights[i].clone() * x_vec + self.biases[i].clone();
 
-                    x_vec.iter_mut().for_each(|x| *x = (self.activation_function)(*x));
+                    x_vec.iter_mut().for_each(|x| *x = (self.activation_function.value())(*x));
                 }
 
                 // in fact, here we index the weights
@@ -124,21 +131,16 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
             .fold(0.0f32, |total, cost| total + cost) / S as f32
     }
 
-    pub fn random_search<R: Rng>(&mut self, rng: &mut R) {
+    pub fn random_search<R: Rng + Clone>(&mut self, rng: &mut R) {
         let average_cost = self.evaluate_average_cost();
 
-        // TODO: needs to be completely replaced
-        // self.weights.iter_mut().zip(rng.sample_iter(Standard)).for_each(|(matrix, random): (_, f32)| {
-        //     matrix.iter_mut().for_each(|v| {
-        //         *v += random * STEP_SIZE;
-        //     })
-        // });
+        let random_ffnn = FeedForwardNxN::<N, S>::new(
+            rng,
+            self.layers_sizes.clone(),
+            self.activation_function,
+        ).unwrap();
 
-        // self.biases.iter_mut().zip(rng.sample_iter(Standard)).for_each(|(bias, random): (_, f32)| {
-        //     bias.iter_mut().for_each(|v| {
-        //         *v += random * STEP_SIZE;
-        //     })
-        // });
+        *self += random_ffnn;
 
         println!("{}", average_cost);
     }
@@ -173,13 +175,13 @@ impl<const N: usize, const S: usize> ops::AddAssign for FeedForwardNxN<N, S> {
 
 #[derive(Debug)]
 pub enum NetworkError {
-    EmptyNayers,
+    EmptyLayers,
 }
 
 impl fmt::Display for NetworkError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Self::EmptyNayers => writeln!(f, "The network must have at least 1 hidden layer."),
+            Self::EmptyLayers => writeln!(f, "The network must have at least 1 hidden layer."),
         }
     }
 }

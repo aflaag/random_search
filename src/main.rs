@@ -1,18 +1,22 @@
-use rand::{prelude::StdRng, SeedableRng};
+use rand::{prelude::StdRng, SeedableRng, thread_rng};
 use random_search::{feedforward::FeedForward1x1, activation_function::ActivationFunction, dataset::Dataset1x1};
 
 fn main() {
-    let dataset = Dataset1x1::<f32, 3>::new_random(f32::sin);
+    let mut rng = thread_rng();
 
-    let mut ffnn = FeedForward1x1::new(
-        vec![3, 2],
-        ActivationFunction::ReLU,
-        dataset,
-    ).unwrap();
-
-    ffnn.print_stuff();
+    let dataset = Dataset1x1::<f32, 3>::new_random(&mut rng, f32::sin);
 
     let mut stdrng = StdRng::from_entropy();
+
+    let mut ffnn = FeedForward1x1::new(
+        &mut stdrng,
+        vec![3, 2],
+        ActivationFunction::ReLU,
+    ).unwrap();
+
+    ffnn.load_dataset(dataset);
+
+    ffnn.print_stuff();
 
     ffnn.random_search(&mut stdrng);
 }

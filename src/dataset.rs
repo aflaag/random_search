@@ -17,9 +17,7 @@ where
     T: Default + Copy,
     Standard: Distribution<T>
 {
-    pub fn new_random<F: Fn(T) -> T>(func: F) -> Self {
-        let mut rng = rand::thread_rng();
-
+    pub fn new_random<R: Rng, F: Fn(T) -> T>(rng: &mut R, func: F) -> Self {
         let mut input = [[T::default(); N]; S];
         let mut output = [[T::default(); N]; S];
 
@@ -44,5 +42,18 @@ where
 
     pub fn get_output(&self) -> [[T; N]; S] {
         self.output
+    }
+}
+
+impl<T, const N: usize, const S: usize> Default for DatasetNxN<T, N, S>
+where
+    T: Default + Copy,
+    Standard: Distribution<T>
+{
+    fn default() -> Self {
+        Self {
+            input: [[T::default(); N]; S],
+            output: [[T::default(); N]; S],
+        }
     }
 }

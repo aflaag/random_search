@@ -10,7 +10,8 @@
 - [x] implement ffnn error enum
 - [x] implement addassign for the ffnn
 - [x] check if the summations between ffnns is doable, somehow
-- [ ] implement new_random for ffnn
+- [x] change rng in dataset
+- [x] change new for ffnn with normal distribution
 - [ ] implement the random search algorithm
 - [ ] implement nn trait
 - [ ] implement dataset trait
