@@ -17,7 +17,7 @@ impl ActivationFunction {
         }
     }
 
-    pub fn value(&self) -> fn(f32) -> f32 {
+    pub fn function(&self) -> fn(f32) -> f32 {
         match *self {
             Self::Sigmoid => Self::sigmoid,
             Self::ReLU => Self::relu,

@@ -4,7 +4,7 @@ use crate::{activation_function::ActivationFunction, dataset::DatasetNxN};
 
 use std::{error, fmt, ops};
 use na::DMatrix;
-use rand::{Rng, thread_rng, distributions::Standard};
+use rand::{Rng, distributions::Standard};
 
 const STEP_SIZE: f32 = 1e-4;
 
@@ -18,24 +18,23 @@ pub struct FeedForwardNxN<const N: usize, const S: usize> {
     biases: Vec<DMatrix<f32>>,
     activation_function: ActivationFunction,
     dataset: DatasetNxN<f32, N, S>,
-    // size: usize,
 }
 
 impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
-    fn generate_matrix_from_iterator<R: Rng + Clone>(m: usize, n: usize, rng: R) -> DMatrix<f32> {
+    fn generate_matrix_from_iterator<R: Rng + ?Sized>(m: usize, n: usize, step_size: f32, rng: &mut R) -> DMatrix<f32> {
         DMatrix::from_iterator(m, n,
             (0..m * n)
                 .zip(rng.sample_iter(Standard))
-                .map(|(_, random): (usize, f32)| random * STEP_SIZE)
+                // .map(|(_, random): (usize, f32)| random * STEP_SIZE)
+                .map(|(_, random): (usize, f32)| random * step_size)
         )
     }
 
-    pub fn new<R: Rng + Clone>(
+    pub fn new<R: Rng + ?Sized>(
         rng: &mut R,
-        layers_sizes:
-        Vec<usize>,
-        activation_function:
-        ActivationFunction,
+        layers_sizes: Vec<usize>,
+        activation_function: ActivationFunction,
+        step_size: f32
     ) -> Result<Self, NetworkError> {
         let layers_sizes_len = layers_sizes.len();
 
@@ -49,7 +48,7 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
         // add the weights between the input
         // layer to the first hidden layer
         let mut weights = vec![
-            Self::generate_matrix_from_iterator(first_hidden_size, N, rng.clone())
+            Self::generate_matrix_from_iterator(first_hidden_size, N, step_size, rng)
         ];
 
         // add the weights bewteen the
@@ -58,35 +57,30 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
             let m = layers_sizes[i + 1];
             let n = layers_sizes[i];
 
-            weights.push(Self::generate_matrix_from_iterator(m, n, rng.clone()));
+            weights.push(Self::generate_matrix_from_iterator(m, n, step_size, rng));
         });
 
         // add the weights between the
         // last hidden layer and the output layer
-        weights.push(Self::generate_matrix_from_iterator(N, last_hidden_size, rng.clone()));
+        weights.push(Self::generate_matrix_from_iterator(N, last_hidden_size, step_size, rng));
 
         // create the biases for each
         // hidden layer
         let mut biases: Vec<DMatrix<f32>> = layers_sizes.iter().map(|n|
-            Self::generate_matrix_from_iterator(*n, 1, rng.clone())
+            Self::generate_matrix_from_iterator(*n, 1, step_size, rng)
         ).collect();
 
         // create the biases for the
         // output layer
-        biases.push(Self::generate_matrix_from_iterator(N, 1, rng.clone()));
+        biases.push(Self::generate_matrix_from_iterator(N, 1, step_size, rng));
 
         Ok(Self {
             layers_sizes,
             layers_number: layers_sizes_len,
             weights,
             biases,
-            activation_function: activation_function,
+            activation_function,
             dataset: DatasetNxN::default(),
-            // size:
-            //     layers_sizes.iter().sum::<usize>() + N + // biases hidden layers + bias output layer
-            //     N * first_hidden_size + // weights between the input layer and the first hidden layer
-            //     layers_sizes.windows(2).map(|w| w[0] * w[1]).sum::<usize>() + // weights between hidden layers
-            //     N * last_hidden_size // weights between the last hidden layer and the output layer
         })
     }
 
@@ -100,49 +94,61 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
             .iter()
             .zip(self.dataset.get_output())
             .map(|(input, output)| {
-                let mut x_vec = DMatrix::from_iterator(N, 1, *input);
-
-                // since layers_number is the number of
-                // hidden layers, and we want to perform
-                // the transformations with the activation
-                // function only on the hidden layers, the
-                // iteration from 0 to layers_number (- 1)
-                // will avoid performing the loop on the
-                // last layer, which is the output layer
-                for i in 0..self.layers_number {
-                    x_vec = self.weights[i].clone() * x_vec + self.biases[i].clone();
-
-                    x_vec.iter_mut().for_each(|x| *x = (self.activation_function.value())(*x));
-                }
-
-                // in fact, here we index the weights
-                // and the biases at layers_number exactly,
-                // because the length of those vectors are
-                // layers_number + 1, since layer_number
-                // is just the number of hidden layers
-                x_vec = self.weights[self.layers_number].clone() * x_vec + self.biases[self.layers_number].clone();
-
                 output
                     .iter()
-                    .zip(x_vec.iter())
+                    .zip(self.evaluate(*input).iter())
                     .map(|(o, y)| (o - y) * (o - y))
                     .fold(0.0f32, |acc, diff| acc + diff)
             })
             .fold(0.0f32, |total, cost| total + cost) / S as f32
     }
 
-    pub fn random_search<R: Rng + Clone>(&mut self, rng: &mut R) {
-        let average_cost = self.evaluate_average_cost();
+    pub fn random_search<R: Rng + ?Sized>(&mut self, rng: &mut R, epochs: usize) {
+        for _ in 0..epochs {
+            let best_ffnn = (0..512).map(|_| {
+                let random_ffnn = FeedForwardNxN::<N, S>::new(
+                    rng,
+                    self.layers_sizes.clone(),
+                    self.activation_function,
+                    STEP_SIZE,
+                ).unwrap();
 
-        let random_ffnn = FeedForwardNxN::<N, S>::new(
-            rng,
-            self.layers_sizes.clone(),
-            self.activation_function,
-        ).unwrap();
+                random_ffnn
+            }).min_by(|x, y|
+                x
+                    .evaluate_average_cost()
+                    .partial_cmp(&y.evaluate_average_cost())
+                    .unwrap()
+            ).unwrap();
 
-        *self += random_ffnn;
+            *self += best_ffnn;
+        }
+    }
 
-        println!("{}", average_cost);
+    pub fn evaluate(&self, input: [f32; N]) -> DMatrix<f32> {
+        let mut x_vec = DMatrix::from_iterator(N, 1, input);
+
+        // since layers_number is the number of
+        // hidden layers, and we want to perform
+        // the transformations with the activation
+        // function only on the hidden layers, the
+        // iteration from 0 to layers_number (- 1)
+        // will avoid performing the loop on the
+        // last layer, which is the output layer
+        for i in 0..self.layers_number {
+            x_vec = self.weights[i].clone() * x_vec + self.biases[i].clone();
+
+            x_vec.iter_mut().for_each(|x| *x = (self.activation_function.function())(*x));
+        }
+
+        // in fact, here we index the weights
+        // and the biases at layers_number exactly,
+        // because the length of those vectors are
+        // layers_number + 1, since layer_number
+        // is just the number of hidden layers
+        x_vec = self.weights[self.layers_number].clone() * x_vec + self.biases[self.layers_number].clone();
+
+        x_vec
     }
 
     // TODO: debug

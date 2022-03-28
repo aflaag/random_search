@@ -12,9 +12,10 @@
 - [x] check if the summations between ffnns is doable, somehow
 - [x] change rng in dataset
 - [x] change new for ffnn with normal distribution
-- [ ] implement the random search algorithm
+- [x] implement the random search algorithm
+- [ ] understand what the fuck is going on
+- [ ] implement seeds for the best ffnn
 - [ ] implement nn trait
 - [ ] implement dataset trait
-- [ ] implement training function
-- [ ] implement dataset error enum
+- [ ] implement dataset error enum (useful?)
 - [ ] 0 sided matrices and vectors are allowed (?)
