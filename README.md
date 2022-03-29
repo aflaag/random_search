@@ -14,7 +14,9 @@
 - [x] change new for ffnn with normal distribution
 - [x] implement the random search algorithm
 - [x] fix the standard gaussian error
+- [ ] implement rayon, super important
 - [ ] make evaluate() to take same input and output
+- [ ] use windows in ffnn::new()
 - [ ] change generate_matrix_from_iterator()
 - [ ] understand what the fuck is going on
 - [ ] implement seeds for the best ffnn

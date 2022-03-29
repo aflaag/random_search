@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use rand::{Rng, distributions::{Standard, uniform::{SampleUniform, SampleRange}}, prelude::Distribution};
 
 pub type Dataset1x1<T, const S: usize> = DatasetNxN<T, 1, S>;
@@ -5,7 +6,7 @@ pub type Dataset1x1<T, const S: usize> = DatasetNxN<T, 1, S>;
 #[derive(Debug, Clone, Copy)]
 pub struct DatasetNxN<T, const N: usize, const S: usize>
 where
-    T: Default + Copy,
+    T: Default + Copy + SampleUniform + Display,
     Standard: Distribution<T>
 {
     input: [[T; N]; S],
@@ -14,7 +15,7 @@ where
 
 impl<T, const N: usize, const S: usize> DatasetNxN<T, N, S>
 where
-    T: Default + Copy + SampleUniform,
+    T: Default + Copy + SampleUniform + Display,
     Standard: Distribution<T>
 {
     pub fn new_random<R, F, U>(rng: &mut R, func: F, range: U) -> Self
@@ -32,6 +33,7 @@ where
 
                 *x = random;
                 *y = func(random);
+                println!("({}, {})", x, y);
             });
         });
 
@@ -52,7 +54,7 @@ where
 
 impl<T, const N: usize, const S: usize> Default for DatasetNxN<T, N, S>
 where
-    T: Default + Copy,
+    T: Default + Copy + SampleUniform + Display,
     Standard: Distribution<T>
 {
     fn default() -> Self {

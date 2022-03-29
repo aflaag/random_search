@@ -5,11 +5,11 @@ pub enum ActivationFunction {
 }
 
 impl ActivationFunction {
-    fn sigmoid(x: f32) -> f32 {
+    fn sigmoid(x: f64) -> f64 {
         1.0 / (1.0 + (-x).exp())
     }
 
-    fn relu(x: f32) -> f32 {
+    fn relu(x: f64) -> f64 {
         if x >= 0.0 {
             x
         } else {
@@ -17,7 +17,7 @@ impl ActivationFunction {
         }
     }
 
-    pub fn function(&self) -> fn(f32) -> f32 {
+    pub fn function(&self) -> fn(f64) -> f64 {
         match *self {
             Self::Sigmoid => Self::sigmoid,
             Self::ReLU => Self::relu,
