@@ -47,12 +47,9 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
 
         // add the weights bewteen the
         // hidden layers
-        (0..layers_sizes_len - 1).for_each(|i| {
-            let m = layers_sizes[i + 1];
-            let n = layers_sizes[i];
-
-            weights.push(Self::generate_matrix_from_iterator(m, n, step_size, rng));
-        });
+        layers_sizes.windows(2).for_each(|window|
+            weights.push(Self::generate_matrix_from_iterator(window[0], window[1], step_size, rng))
+        );
 
         // add the weights between the
         // last hidden layer and the output layer
@@ -101,7 +98,7 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
         cost / (S as f64)
     }
 
-    pub fn random_search<R: Rng + ?Sized + Sync + Send>(&mut self, rng: &mut R, epochs: usize, networks: usize) {
+    pub fn random_search<R: Rng + ?Sized>(&mut self, rng: &mut R, epochs: usize, networks: usize) {
         for epoch in 0..epochs {
             // generates some random seeds
             // which are then used to keep track
@@ -122,7 +119,8 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
                     ).unwrap();
 
                     ((ffnn + self.clone()).unwrap().evaluate_average_cost(), seed)
-                }).min_by(|(x, _), (y, _)| x.partial_cmp(&y).unwrap())
+                })
+                .min_by(|(x, _), (y, _)| x.partial_cmp(&y).unwrap())
                 .map(|(_, seed)| seed)
                 .unwrap();
 
