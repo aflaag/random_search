@@ -2,7 +2,7 @@ extern crate nalgebra as na;
 
 use crate::{activation_function::ActivationFunction, dataset::DatasetNxN};
 
-use std::{error, fmt, ops, iter};
+use std::{error, fmt, ops};
 use na::DMatrix;
 use rand::{Rng, prelude::StdRng, SeedableRng};
 use rand_distr::{StandardNormal, Standard};
@@ -48,7 +48,7 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
         // add the weights bewteen the
         // hidden layers
         layers_sizes.windows(2).for_each(|window|
-            weights.push(Self::generate_matrix_from_iterator(window[0], window[1], step_size, rng))
+            weights.push(Self::generate_matrix_from_iterator(window[1], window[0], step_size, rng))
         );
 
         // add the weights between the
@@ -90,7 +90,7 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
 
             let expected = x.sin();
 
-            let output = self.evaluate([x; N])[(0, 0)];
+            let output = self.evaluate(DMatrix::<f64>::from_iterator(N, 1, [x; N]))[(0, 0)];
 
             cost += (output - expected) * (output - expected);
         }
@@ -98,7 +98,7 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
         cost / (S as f64)
     }
 
-    pub fn random_search<R: Rng + ?Sized>(&mut self, rng: &mut R, epochs: usize, networks: usize) {
+    pub fn random_search<R: Rng + ?Sized>(&mut self, rng: &mut R, epochs: usize, networks: usize, verbose: bool) {
         for epoch in 0..epochs {
             // generates some random seeds
             // which are then used to keep track
@@ -131,13 +131,13 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
                 STEP_SIZE,
             ).unwrap();
 
-            println!("({}, {})", epoch, self.evaluate_average_cost());
+            if verbose {
+                println!("({}, {})", epoch, self.evaluate_average_cost());
+            }
         }
     }
 
-    pub fn evaluate(&self, input: [f64; N]) -> DMatrix<f64> {
-        let mut x_vec = DMatrix::from_iterator(N, 1, input);
-
+    pub fn evaluate(&self, mut x_vec: DMatrix<f64>) -> DMatrix<f64> {
         // since layers_number is the number of
         // hidden layers, and we want to perform
         // the transformations with the activation

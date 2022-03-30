@@ -1,37 +1,46 @@
+use nalgebra::{DimMax, DMatrix};
 use rand::{prelude::StdRng, SeedableRng};
 use random_search::{feedforward::{FeedForward1x1, self}, activation_function::ActivationFunction, dataset::Dataset1x1};
 
+const S: usize = 300;
+
 fn main() {
-    let mut stdrng = StdRng::from_entropy();
+    let mut mean_cost = 0.0;
+    let experiments = 5;
 
-    let mut ffnn = FeedForward1x1::<300>::new(
-        &mut stdrng,
-        vec![32, 32, 32],
-        ActivationFunction::ReLU,
-        feedforward::STEP_SIZE,
-    ).unwrap();
+    for _ in 0..experiments {
+        let mut stdrng = StdRng::from_entropy();
 
-    ffnn.random_search(&mut stdrng, 25_000, 256);
+        let mut ffnn = FeedForward1x1::<{S}>::new(
+            &mut stdrng,
+            vec![32; 3],
+            ActivationFunction::ReLU,
+            feedforward::STEP_SIZE,
+        ).unwrap();
 
-    println!("-------------------------");
+        ffnn.random_search(&mut stdrng, 25_000, 32, true);
 
-    let n = 5.0;
-    let samples = 300;
-    let m = (n * 2.0) / samples as f64;
+        println!("-------------------------");
 
-    let mut cost = 0.0;
+        let n = 5.0;
+        let m = (n * 2.0) / (S as f64);
 
-    for i in 0..samples {
-        let x = m * i as f64 - n;
+        let mut cost = 0.0;
 
-        let expected = x.sin();
+        for i in 0..S {
+            let x = m * i as f64 - n;
 
-        let output = ffnn.evaluate([x; 1])[(0, 0)];
+            let expected = x.sin();
 
-        println!("({}, {})", x, output);
+            let output = ffnn.evaluate(DMatrix::<f64>::from_iterator(1, 1, [x; 1]))[(0, 0)];
 
-        cost += (output - expected) * (output - expected);
+            println!("({}, {})", x, output);
+
+            cost += (output - expected) * (output - expected);
+        }
+
+        mean_cost += cost / (S as f64);
     }
     
-    println!("{}", cost / (samples as f64));
+    println!("Average loss value: {}", mean_cost / (experiments as f64));
 }
