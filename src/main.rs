@@ -1,4 +1,4 @@
-use nalgebra::{DimMax, DMatrix};
+use nalgebra::DMatrix;
 use rand::{prelude::StdRng, SeedableRng};
 use random_search::{feedforward::{FeedForward1x1, self}, activation_function::ActivationFunction, dataset::Dataset1x1};
 
