@@ -14,13 +14,19 @@
 - [x] change new for ffnn with normal distribution
 - [x] implement the random search algorithm
 - [x] fix the standard gaussian error
-- [ ] implement rayon, super important
+- [x] understand what the fuck is going on
+- [x] fix the problem with rayon with the rng
+- [x] implement rayon, super important
+- [ ] consider using the dataset thing still
+- [ ] make a better add method
 - [ ] make evaluate() to take same input and output
 - [ ] use windows in ffnn::new()
 - [ ] change generate_matrix_from_iterator()
-- [ ] understand what the fuck is going on
 - [ ] implement seeds for the best ffnn
 - [ ] implement nn trait
 - [ ] implement dataset trait
 - [ ] implement dataset error enum (useful?)
 - [ ] 0 sided matrices and vectors are allowed (?)
+- [ ] document everything
+- [ ] consider implementing the genetic algorithm
+- [ ] consider parallelizing evaluate()

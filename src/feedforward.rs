@@ -2,10 +2,10 @@ extern crate nalgebra as na;
 
 use crate::{activation_function::ActivationFunction, dataset::DatasetNxN};
 
-use std::{error, fmt, ops};
+use std::{error, fmt, ops, iter};
 use na::DMatrix;
-use rand::Rng;
-use rand_distr::StandardNormal;
+use rand::{Rng, prelude::StdRng, SeedableRng};
+use rand_distr::{StandardNormal, Standard};
 use rayon::prelude::*;
 
 pub const STEP_SIZE: f64 = 0.0001;
@@ -19,15 +19,13 @@ pub struct FeedForwardNxN<const N: usize, const S: usize> {
     weights: Vec<DMatrix<f64>>,
     biases: Vec<DMatrix<f64>>,
     activation_function: ActivationFunction,
-    dataset: DatasetNxN<f64, N, S>,
+    // dataset: DatasetNxN<f64, N, S>,
 }
 
 impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
     fn generate_matrix_from_iterator<R: Rng + ?Sized>(m: usize, n: usize, step_size: f64, rng: &mut R) -> DMatrix<f64> {
         DMatrix::from_iterator(m, n,
-            (0..m * n)
-                .zip(rng.sample_iter(StandardNormal))
-                .map(|(_, random): (usize, f64)| random * step_size)
+            rng.sample_iter::<f64, _>(StandardNormal).take(m * n).map(|random| random * step_size)
         )
     }
 
@@ -76,53 +74,15 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
             weights,
             biases,
             activation_function,
-            dataset: DatasetNxN::default(),
+            // dataset: DatasetNxN::default(),
         })
     }
 
-    pub fn load_dataset(&mut self, dataset: DatasetNxN<f64, N, S>) {
-        self.dataset = dataset;
-    }
+    // pub fn load_dataset(&mut self, dataset: DatasetNxN<f64, N, S>) {
+    //     self.dataset = dataset;
+    // }
 
     fn evaluate_average_cost(&self) -> f64 {
-        // self.dataset
-        //     .get_input()
-        //     .iter()
-        //     .zip(self.dataset.get_output())
-        //     .map(|(input, output)| {
-        //         output
-        //             .iter()
-        //             .zip(self.evaluate(*input).iter())
-        //             .map(|(o, y)| (o - y) * (o - y))
-        //             .sum::<f64>()
-        //     })
-        //     .sum::<f64>() / (S as f64)
-
-        // let mut cost = 0.0;
-
-        // for x_vec in self.dataset.get_input()
-
-        // let mut t = 0.0;
-        // // let mut rng = thread_rng();
-        // let mut rng = StdRng::from_entropy();
-
-        // for _ in 0..128 {
-        //     let x: f64 = rng.sample::<f64, _>(StandardNormal);
-        //     // let x: f64 = 10.0 / (1.0 + rng.sample::<f64, _>(StandardNormal)) - 5.0;
-        //     // println!("{}", x);
-
-        //     t += self.evaluate([x as f64; N])
-        //         .iter()
-        //         .map(|output| {
-        //             let expected = (x as f64).sin();
-
-        //             (output - expected) * (output - expected)
-        //         })
-        //         .sum::<f64>();
-        // }
-
-        // t / (S as f64)
-
         let n = 5.0;
         let m = (n * 2.0) / (S as f64);
 
@@ -141,27 +101,37 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
         cost / (S as f64)
     }
 
-    pub fn random_search<R: Rng + ?Sized + Sync + Send + Clone>(&mut self, rng: &mut R, epochs: usize, networks: usize) {
+    pub fn random_search<R: Rng + ?Sized + Sync + Send>(&mut self, rng: &mut R, epochs: usize, networks: usize) {
         for epoch in 0..epochs {
-            *self += (0..networks)
-                // .into_par_iter()
-                // .map_with(rng.clone(), |rng, _| {
-                .map(|_| {
-                    FeedForwardNxN::<N, S>::new(
-                        rng,
-                        // &mut rng.clone(),
+            // generates some random seeds
+            // which are then used to keep track
+            // of the best network
+            let lowest_seed = rng
+                .sample_iter(Standard)
+                .take(networks)
+                .collect::<Vec<u64>>()
+                .into_par_iter()
+                .map(|seed| {
+                    let mut seeded_rng = StdRng::seed_from_u64(seed);
+
+                    let ffnn = FeedForwardNxN::<N, S>::new(
+                        &mut seeded_rng,
                         self.layers_sizes.clone(),
                         self.activation_function,
                         STEP_SIZE,
-                    ).unwrap()
-                }).min_by(|x, y|
-                    (x.clone() + self.clone()).unwrap()
-                    // x
-                        .evaluate_average_cost()
-                        // .partial_cmp(&y.evaluate_average_cost())
-                        .partial_cmp(&(y.clone() + self.clone()).unwrap().evaluate_average_cost())
-                        .unwrap()
-                ).unwrap();
+                    ).unwrap();
+
+                    ((ffnn + self.clone()).unwrap().evaluate_average_cost(), seed)
+                }).min_by(|(x, _), (y, _)| x.partial_cmp(&y).unwrap())
+                .map(|(_, seed)| seed)
+                .unwrap();
+
+            *self += FeedForwardNxN::<N, S>::new(
+                &mut StdRng::seed_from_u64(lowest_seed),
+                self.layers_sizes.clone(),
+                self.activation_function,
+                STEP_SIZE,
+            ).unwrap();
 
             println!("({}, {})", epoch, self.evaluate_average_cost());
         }
@@ -183,12 +153,6 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
             x_vec.iter_mut().for_each(|x| *x = (self.activation_function.function())(*x));
         }
         
-        // (0..self.layers_number).into_par_iter().for_each(|i| {
-        //     x_vec = &self.weights[i] * x_vec + &self.biases[i];
-
-        //     x_vec.iter_mut().for_each(|x| *x = (self.activation_function.function())(*x));
-        // });
-
         // in fact, here we index the weights
         // and the biases at layers_number exactly,
         // because the length of those vectors are
@@ -196,13 +160,9 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
         // is just the number of hidden layers
         &self.weights[self.layers_number] * x_vec + &self.biases[self.layers_number]
     }
-
-    // TODO: debug
-    pub fn print_stuff(&self) {
-    }
 }
 
-// TODO: remove this, terrible
+// TODO: change this possibly
 impl<const N: usize, const S: usize> ops::Add for FeedForwardNxN<N, S> {
     type Output = Result<Self, NetworkError>;
 
