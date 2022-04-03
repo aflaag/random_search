@@ -1,40 +1,21 @@
-use std::fmt::Display;
-use rand::{Rng, distributions::{Standard, uniform::{SampleUniform, SampleRange}}, prelude::Distribution};
+use std::{ops::RangeInclusive, iter, slice};
+use rand::Rng;
 
-pub type Dataset1x1<T, const S: usize> = DatasetNxN<T, 1, S>;
+pub type Dataset1x1<const S: usize> = DatasetNxN<1, S>;
 
 #[derive(Debug, Clone, Copy)]
-pub struct DatasetNxN<T, const N: usize, const S: usize>
-where
-    T: Default + Copy + SampleUniform + Display,
-    Standard: Distribution<T>
-{
-    input: [[T; N]; S],
-    output: [[T; N]; S],
+pub struct DatasetNxN<const N: usize, const S: usize> {
+    input: [[f32; N]; S],
+    output: [[f32; N]; S],
 }
 
-impl<T, const N: usize, const S: usize> DatasetNxN<T, N, S>
-where
-    T: Default + Copy + SampleUniform + Display,
-    Standard: Distribution<T>
-{
-    pub fn new_random<R, F, U>(rng: &mut R, func: F, range: U) -> Self
-    where
-        R: Rng + ?Sized,
-        F: Fn(T) -> T,
-        U: SampleRange<T> + Clone,
-    {
-        let mut input = [[T::default(); N]; S];
-        let mut output = [[T::default(); N]; S];
+impl<const N: usize, const S: usize> DatasetNxN<N, S> {
+    pub fn new_random<R: Rng + ?Sized, F: Fn(f32) -> f32>(rng: &mut R, func: F, range: RangeInclusive<f32>) -> Self {
+        let mut input = [(); S].map(|_| [(); N].map(|_| rng.gen_range(range.clone())));
+        let mut output = [[0.0; N]; S];
 
         input.iter_mut().zip(output.iter_mut()).for_each(|(i, o)| {
-            i.iter_mut().zip(o.iter_mut()).for_each(|(x, y)| {
-                let random: T = rng.gen_range(range.clone());
-
-                *x = random;
-                *y = func(random);
-                println!("({}, {})", x, y);
-            });
+            i.iter_mut().zip(o.iter_mut()).for_each(|(x, y)| *y = func(*x));
         });
 
         Self {
@@ -43,24 +24,7 @@ where
         }
     }
 
-    pub fn get_input(&self) -> [[T; N]; S] {
-        self.input
-    }
-
-    pub fn get_output(&self) -> [[T; N]; S] {
-        self.output
-    }
-}
-
-impl<T, const N: usize, const S: usize> Default for DatasetNxN<T, N, S>
-where
-    T: Default + Copy + SampleUniform + Display,
-    Standard: Distribution<T>
-{
-    fn default() -> Self {
-        Self {
-            input: [[T::default(); N]; S],
-            output: [[T::default(); N]; S],
-        }
+    pub fn iter_zip(&self) -> iter::Zip<slice::Iter<'_, [f32; N]>, slice::Iter<'_, [f32; N]>> {
+        self.input.iter().zip(self.output.iter())
     }
 }

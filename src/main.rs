@@ -1,46 +1,36 @@
-use nalgebra::DMatrix;
-use rand::{prelude::StdRng, SeedableRng};
-use random_search::{feedforward::{FeedForward1x1, self}, activation_function::ActivationFunction, dataset::Dataset1x1};
+use random_search::{feedforward::FeedForward1x1, activation_function::ActivationFunction, dataset::Dataset1x1, cost_function::CostFunction};
 
-const S: usize = 300;
+use std::ops::RangeInclusive;
+use rand::{prelude::StdRng, SeedableRng};
 
 fn main() {
     let mut mean_cost = 0.0;
-    let experiments = 5;
+    let experiments = 1usize;
 
-    for _ in 0..experiments {
-        let mut stdrng = StdRng::from_entropy();
+    let mut stdrng = StdRng::from_entropy();
 
-        let mut ffnn = FeedForward1x1::<{S}>::new(
+    let range = RangeInclusive::new(-10.0, 10.0);
+    let dataset = Dataset1x1::<300>::new_random(&mut stdrng, f32::sin, range);
+
+    for experiment in 1..=experiments {
+        let mut ffnn = FeedForward1x1::new(
             &mut stdrng,
             vec![32; 3],
             ActivationFunction::ReLU,
-            feedforward::STEP_SIZE,
+            CostFunction::L2,
+            dataset,
         ).unwrap();
 
-        ffnn.random_search(&mut stdrng, 25_000, 32, true);
+        ffnn.random_search(&mut stdrng, 35_000, 64, true);
 
         println!("-------------------------");
 
-        let n = 5.0;
-        let m = (n * 2.0) / (S as f64);
+        let final_loss = ffnn.evaluate_average_cost(true);
 
-        let mut cost = 0.0;
+        mean_cost += final_loss;
 
-        for i in 0..S {
-            let x = m * i as f64 - n;
-
-            let expected = x.sin();
-
-            let output = ffnn.evaluate(DMatrix::<f64>::from_iterator(1, 1, [x; 1]))[(0, 0)];
-
-            println!("({}, {})", x, output);
-
-            cost += (output - expected) * (output - expected);
-        }
-
-        mean_cost += cost / (S as f64);
+        println!("Experiment {}: {}", experiment, final_loss);
     }
     
-    println!("Average loss value: {}", mean_cost / (experiments as f64));
+    println!("Average loss value: {}", mean_cost / (experiments as f32));
 }

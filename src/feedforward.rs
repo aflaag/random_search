@@ -1,6 +1,6 @@
 extern crate nalgebra as na;
 
-use crate::{activation_function::ActivationFunction, dataset::DatasetNxN};
+use crate::{activation_function::ActivationFunction, dataset::DatasetNxN, cost_function::CostFunction};
 
 use std::{error, fmt, ops};
 use na::DMatrix;
@@ -8,7 +8,7 @@ use rand::{Rng, prelude::StdRng, SeedableRng};
 use rand_distr::{StandardNormal, Standard};
 use rayon::prelude::*;
 
-pub const STEP_SIZE: f64 = 0.0001;
+pub const STEP_SIZE: f32 = 0.0001;
 
 pub type FeedForward1x1<const S: usize> = FeedForwardNxN<1, S>;
 
@@ -16,24 +16,35 @@ pub type FeedForward1x1<const S: usize> = FeedForwardNxN<1, S>;
 pub struct FeedForwardNxN<const N: usize, const S: usize> {
     layers_sizes: Vec<usize>,
     layers_number: usize,
-    weights: Vec<DMatrix<f64>>,
-    biases: Vec<DMatrix<f64>>,
+    weights: Vec<DMatrix<f32>>,
+    biases: Vec<DMatrix<f32>>,
     activation_function: ActivationFunction,
-    // dataset: DatasetNxN<f64, N, S>,
+    cost_function: CostFunction,
+    dataset: DatasetNxN<N, S>,
 }
 
 impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
-    fn generate_matrix_from_iterator<R: Rng + ?Sized>(m: usize, n: usize, step_size: f64, rng: &mut R) -> DMatrix<f64> {
+    fn generate_matrix_from_iterator<R: Rng + ?Sized>(m: usize, n: usize, rng: &mut R) -> DMatrix<f32> {
         DMatrix::from_iterator(m, n,
-            rng.sample_iter::<f64, _>(StandardNormal).take(m * n).map(|random| random * step_size)
+            rng.sample_iter::<f32, _>(StandardNormal).take(m * n).map(|random| random * STEP_SIZE)
         )
     }
 
-    pub fn new<R: Rng + ?Sized>(rng: &mut R, layers_sizes: Vec<usize>, activation_function: ActivationFunction, step_size: f64) -> Result<Self, NetworkError> {
+    pub fn new<R: Rng + ?Sized>(
+        rng: &mut R,
+        layers_sizes: Vec<usize>,
+        activation_function: ActivationFunction,
+        cost_function: CostFunction,
+        dataset: DatasetNxN<N, S>
+    ) -> Result<Self, NetworkError> {
         let layers_sizes_len = layers_sizes.len();
 
         if layers_sizes_len == 0 {
             return Err(NetworkError::EmptyLayers);
+        }
+
+        if layers_sizes.iter().any(|size| *size == 0) {
+            return Err(NetworkError::ZeroLayer)
         }
 
         let first_hidden_size = layers_sizes[0];
@@ -42,28 +53,28 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
         // add the weights between the input
         // layer to the first hidden layer
         let mut weights = vec![
-            Self::generate_matrix_from_iterator(first_hidden_size, N, step_size, rng)
+            Self::generate_matrix_from_iterator(first_hidden_size, N, rng)
         ];
 
         // add the weights bewteen the
         // hidden layers
         layers_sizes.windows(2).for_each(|window|
-            weights.push(Self::generate_matrix_from_iterator(window[1], window[0], step_size, rng))
+            weights.push(Self::generate_matrix_from_iterator(window[1], window[0], rng))
         );
 
         // add the weights between the
         // last hidden layer and the output layer
-        weights.push(Self::generate_matrix_from_iterator(N, last_hidden_size, step_size, rng));
+        weights.push(Self::generate_matrix_from_iterator(N, last_hidden_size, rng));
 
         // create the biases for each
         // hidden layer
-        let mut biases: Vec<DMatrix<f64>> = layers_sizes.iter().map(|n|
-            Self::generate_matrix_from_iterator(*n, 1, step_size, rng)
+        let mut biases: Vec<DMatrix<f32>> = layers_sizes.iter().map(|n|
+            Self::generate_matrix_from_iterator(*n, 1, rng)
         ).collect();
 
         // create the biases for the
         // output layer
-        biases.push(Self::generate_matrix_from_iterator(N, 1, step_size, rng));
+        biases.push(Self::generate_matrix_from_iterator(N, 1, rng));
 
         Ok(Self {
             layers_sizes,
@@ -71,35 +82,28 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
             weights,
             biases,
             activation_function,
-            // dataset: DatasetNxN::default(),
+            cost_function,
+            dataset,
         })
     }
 
-    // pub fn load_dataset(&mut self, dataset: DatasetNxN<f64, N, S>) {
-    //     self.dataset = dataset;
-    // }
+    pub fn evaluate_average_cost(&self, verbose: bool) -> f32 {
+        self.dataset
+            .iter_zip()
+            .map(|(input, expected)| {
+                let output = self.evaluate(DMatrix::<f32>::from_iterator(N, 1, *input));
 
-    fn evaluate_average_cost(&self) -> f64 {
-        let n = 5.0;
-        let m = (n * 2.0) / (S as f64);
+                if verbose {
+                    println!("({:?}, {:?})", input[0], output[0]);
+                }
 
-        let mut cost = 0.0;
-
-        for i in 0..S {
-            let x = m * i as f64 - n;
-
-            let expected = x.sin();
-
-            let output = self.evaluate(DMatrix::<f64>::from_iterator(N, 1, [x; N]))[(0, 0)];
-
-            cost += (output - expected) * (output - expected);
-        }
-
-        cost / (S as f64)
+                output.iter().zip(expected).map(|(o, y)| (self.cost_function.function())(*o, *y)).sum::<f32>()
+            })
+            .sum::<f32>() / (S as f32)
     }
 
     pub fn random_search<R: Rng + ?Sized>(&mut self, rng: &mut R, epochs: usize, networks: usize, verbose: bool) {
-        for epoch in 0..epochs {
+        for epoch in 1..=epochs {
             // generates some random seeds
             // which are then used to keep track
             // of the best network
@@ -115,10 +119,11 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
                         &mut seeded_rng,
                         self.layers_sizes.clone(),
                         self.activation_function,
-                        STEP_SIZE,
+                        self.cost_function,
+                        self.dataset,
                     ).unwrap();
 
-                    ((ffnn + self.clone()).unwrap().evaluate_average_cost(), seed)
+                    ((ffnn + self.clone()).unwrap().evaluate_average_cost(false), seed)
                 })
                 .min_by(|(x, _), (y, _)| x.partial_cmp(&y).unwrap())
                 .map(|(_, seed)| seed)
@@ -128,16 +133,17 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
                 &mut StdRng::seed_from_u64(lowest_seed),
                 self.layers_sizes.clone(),
                 self.activation_function,
-                STEP_SIZE,
+                self.cost_function,
+                self.dataset,
             ).unwrap();
 
             if verbose {
-                println!("({}, {})", epoch, self.evaluate_average_cost());
+                println!("({}, {})", epoch, self.evaluate_average_cost(false));
             }
         }
     }
 
-    pub fn evaluate(&self, mut x_vec: DMatrix<f64>) -> DMatrix<f64> {
+    pub fn evaluate(&self, mut x_vec: DMatrix<f32>) -> DMatrix<f32> {
         // since layers_number is the number of
         // hidden layers, and we want to perform
         // the transformations with the activation
@@ -160,7 +166,6 @@ impl<const N: usize, const S: usize> FeedForwardNxN<N, S> {
     }
 }
 
-// TODO: change this possibly
 impl<const N: usize, const S: usize> ops::Add for FeedForwardNxN<N, S> {
     type Output = Result<Self, NetworkError>;
 
@@ -197,6 +202,7 @@ impl<const N: usize, const S: usize> ops::AddAssign for FeedForwardNxN<N, S> {
 pub enum NetworkError {
     EmptyLayers,
     DifferentSizes,
+    ZeroLayer,
 }
 
 impl fmt::Display for NetworkError {
@@ -204,6 +210,7 @@ impl fmt::Display for NetworkError {
         match *self {
             Self::EmptyLayers => writeln!(f, "The network must have at least 1 hidden layer."),
             Self::DifferentSizes => writeln!(f, "The two networks have different sizes."),
+            Self::ZeroLayer => writeln!(f, "The network can't contain layers with 0 neurons.")
         }
     }
 }
