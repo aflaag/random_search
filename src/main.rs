@@ -21,7 +21,7 @@ fn main() {
             dataset,
         ).unwrap();
 
-        ffnn.random_search(&mut stdrng, 35_000, 64, true);
+        ffnn.random_search(&mut stdrng, 100_000, 16, false);
 
         println!("-------------------------");
 

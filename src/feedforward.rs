@@ -171,9 +171,9 @@ impl<const N: usize, const S: usize> ops::Add for FeedForwardNxN<N, S> {
 
     fn add(self, rhs: Self) -> Self::Output {
         if self.layers_sizes != rhs.layers_sizes {
-            return Err(NetworkError::DifferentSizes)
+            Err(NetworkError::DifferentSizes)
         } else {
-            let mut result = self.clone();
+            let mut result = self;
 
             result += rhs;
             
